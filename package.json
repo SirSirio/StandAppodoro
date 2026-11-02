@@ -53,7 +53,8 @@
       "artifactName": "StandAppodoro-Setup-${version}.${ext}"
     },
     "publish": {
-      "provider": "github"
+      "provider": "github",
+      "releaseType": "release"
     }
   }
 }
