@@ -1,7 +1,7 @@
 {
   "name": "standappodoro",
   "productName": "StandAppodoro",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Every 30 minutes the laptop becomes unusable until you stand app.",
   "main": "main.js",
   "author": "Sirio",
