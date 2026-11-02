@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Take a breath</title>
+<style>
+  @font-face { font-family: 'Outfit'; src: url('assets/fonts/Outfit.woff2') format('woff2'); font-weight: 200 700; font-display: block; }
+  :root { --text: #eceef2; --muted: #a4aab5; --accent: #f0b58f; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #14171d; cursor: none; }
+  body { font-family: 'Outfit', system-ui, sans-serif; color: var(--text); -webkit-user-select: none; user-select: none; }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .hud { position: absolute; pointer-events: none; animation: fadein 1200ms ease-out both; }
+  #ring { animation: fadein 1200ms ease-out both; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .hud, #ring { animation: none; } }
+  .msg { left: 48px; top: 40px; font-size: 20px; font-weight: 400; transition: color 300ms ease; }
+  .msg.warn { color: var(--accent); }
+  .count { left: 0; right: 0; bottom: 6vh; display: flex; justify-content: center; align-items: baseline; gap: 12px; }
+  .count b { font-size: 64px; font-weight: 200; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+  .count span { font-size: 17px; color: var(--muted); transition: color 300ms ease; }
+  .count.touch span { color: var(--accent); }
+  .esc { right: 40px; top: 32px; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px 0 12px;
+         background: rgba(255,255,255,0.05); border-radius: 999px; font-size: 15px; color: var(--muted);
+         transition: background 200ms ease, color 200ms ease, transform 200ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top right; }
+  .esc b { color: var(--text); font-weight: 500; }
+  .esc svg { display: block; }
+  .esc.hold { background: var(--accent); color: #1c1510; transform: scale(1.18); }
+  .esc.hold b { color: #1c1510; }
+  .esc.hold .track { stroke: rgba(28,21,16,0.25); }
+  .esc.hold .fill { stroke: #1c1510; }
+  @media (prefers-reduced-motion: reduce) { .esc { transition: none; } .esc.hold { transform: none; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<svg id="ring" aria-hidden="true">
+  <circle id="track" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"/>
+  <circle id="arc" fill="none" stroke="#f0b58f" stroke-width="3" stroke-linecap="round"/>
+</svg>
+<div class="hud msg" id="msg">Take a breath.</div>
+<div class="hud count" id="count"><b id="n">30</b><span id="lbl">seconds hands off</span></div>
+<div class="hud esc" id="esc">
+  <svg width="18" height="18" viewBox="0 0 22 22"><circle class="track" cx="11" cy="11" r="9" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2"/><circle id="escArc" class="fill" cx="11" cy="11" r="9" fill="none" stroke="#f0b58f" stroke-width="2" stroke-dasharray="56.55" stroke-dashoffset="56.55" stroke-linecap="round" transform="rotate(-90 11 11)"/></svg>
+  <span id="escText">Hold <b>Esc</b> 10 s to leave</span>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('gl');
+  const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: false });
+  const dpr = window.devicePixelRatio || 1;
+  let W = 0, H = 0, minDim = 0;
+  let cfg = { breakSec: 30, growSec: 15, escHoldSec: 10 };
+  let mouse = null;            // css px
+  let state = { elapsed: 0, remaining: 30, touching: false };
+  let hasTex = 0;
+  let annoy = 0;               // 0 calm .. 1 unbearable; rises while touching, falls when hands off
+  let escHeld = false;
+  let lastInput = -10;         // seconds (overlay clock) of the last mouse/keyboard event seen here
+  let lastFrame = performance.now();
+  const t0 = performance.now();
+  const elapsed = () => (performance.now() - t0) / 1000;   // smooth per-frame clock
+
+  function resize() {
+    W = Math.round(window.innerWidth * dpr); H = Math.round(window.innerHeight * dpr);
+    canvas.width = W; canvas.height = H; gl.viewport(0, 0, W, H);
+    minDim = Math.min(W, H);
+    const ring = document.getElementById('ring');
+    ring.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- shader ----------
+  const VS = `attribute vec2 a; varying vec2 v; void main(){ v = a*0.5+0.5; gl_Position = vec4(a,0.0,1.0); }`;
+  const FS = `
+    precision highp float;
+    uniform sampler2D t; uniform vec2 res; uniform vec2 c; uniform float R; uniform float time; uniform float dim; uniform int hasTex;
+    varying vec2 v;
+    void main(){
+      vec2 p = v*res;
+      vec2 d = p - c;
+      float r = length(d);
+      float h = R*0.38;
+      float ang = atan(d.y, d.x);
+      float pull = (R*R*0.45)/max(r, 1.0);
+      float rs = r + pull;
+      float sw = min(2.5, 1.6*smoothstep(3.0*R, 0.0, r)*(R/max(r, 1.0)));
+      float a = ang + sw*0.5 + 0.08*sin(time*0.6);
+      vec2 dir = vec2(cos(a), sin(a));
+      vec2 base = c + dir*rs;
+      float ca = 0.02*R*smoothstep(3.0*R, h, r);
+      vec3 col;
+      if (hasTex == 1) {
+        col.r = texture2D(t, (base + dir*ca)/res).r;
+        col.g = texture2D(t, base/res).g;
+        col.b = texture2D(t, (base - dir*ca)/res).b;
+      } else {
+        col = mix(vec3(0.08,0.09,0.11), vec3(0.16,0.18,0.22), v.y);
+      }
+      float edge = smoothstep(h*0.9, h*1.1, r);
+      float ring = exp(-pow((r - h*1.06)/(R*0.06), 2.0));
+      vec3 glow = vec3(0.94, 0.71, 0.56)*ring*1.1;
+      col = col*edge*(1.0 - dim*0.55) + glow*edge;
+      gl_FragColor = vec4(col, 1.0);
+    }`;
+  function shader(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const aLoc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(aLoc); gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+  const U = {}; for (const k of ['t', 'res', 'c', 'R', 'time', 'dim', 'hasTex']) U[k] = gl.getUniformLocation(prog, k);
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([20, 23, 29, 255]));
+
+  function loadImage(dataUrl) {
+    const img = new Image();
+    img.onload = () => { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img); hasTex = 1; };
+    img.src = dataUrl;
+  }
+
+  const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+  function radius() {
+    const e = elapsed();
+    let f = 0.42 * smooth(e / cfg.growSec);                                     // opens from nothing, full after growSec, soft at both ends
+    if (e > cfg.growSec) f += 0.14 * Math.min(1, (e - cfg.growSec) / 45);        // then keeps creeping outward
+    return f * minDim;
+  }
+
+  // ---------- HUD ----------
+  const ringEl = document.getElementById('ring');
+  const track = document.getElementById('track'), arc = document.getElementById('arc');
+  const nEl = document.getElementById('n'), lbl = document.getElementById('lbl'), countEl = document.getElementById('count'), msg = document.getElementById('msg');
+  const escArc = document.getElementById('escArc'), escEl = document.getElementById('esc'), escText = document.getElementById('escText');
+  let escStart = null, escShown = -1;
+
+  function hud() {
+    const cx = mouse ? mouse.x : window.innerWidth / 2, cy = mouse ? mouse.y : window.innerHeight / 2;
+    const r = 0.40 * Math.min(window.innerWidth, window.innerHeight);
+    const C = 2 * Math.PI * r;
+    for (const el of [track, arc]) { el.setAttribute('cx', cx); el.setAttribute('cy', cy); el.setAttribute('r', r); }
+    arc.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+    arc.setAttribute('stroke-dasharray', C);
+    arc.setAttribute('stroke-dashoffset', C * (1 - state.remaining / cfg.breakSec));
+    nEl.textContent = Math.ceil(state.remaining);
+    countEl.classList.toggle('touch', state.touching);
+    lbl.textContent = state.touching ? 'hands off, the count restarts' : 'seconds hands off';
+    const text = annoy < 0.25 ? 'Take a breath.' : annoy < 0.7 ? 'Hands off. Step away.' : 'The sound stops when you let go.';
+    if (msg.textContent !== text) msg.textContent = text;
+    msg.classList.toggle('warn', annoy >= 0.25);
+    const p = escStart ? Math.min(1, (performance.now() - escStart) / 1000 / cfg.escHoldSec) : 0;
+    escArc.setAttribute('stroke-dashoffset', 56.55 * (1 - p));
+    escEl.classList.toggle('hold', !!escStart);
+    const left = escStart ? Math.ceil(cfg.escHoldSec * (1 - p)) : -1;
+    if (left !== escShown) {
+      escShown = left;
+      escText.innerHTML = escStart ? `Keep holding <b>Esc</b> ${left}` : `Hold <b>Esc</b> ${cfg.escHoldSec} s to leave`;
+    }
+    if (p >= 1) { escStart = null; escHeld = false; window.stan.escape(); }
+  }
+
+  // ---------- sound ----------
+  // Calm layer: slow pentatonic notes that get quieter the longer you stay away.
+  // Siren layer: high swept sawtooth + beeps, mixed in by `annoy` (touching the laptop).
+  const SND = (() => {
+    let ctx, master, delay, fb, calmBus, sirenBus, siren = null, nextNote = 0, nextBeep = 0, started = false;
+    const scale = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+    function init() {
+      if (started) return; started = true;
+      ctx = new AudioContext();
+      master = ctx.createGain(); master.gain.value = 0.6;
+      const comp = ctx.createDynamicsCompressor();
+      master.connect(comp).connect(ctx.destination);
+      delay = ctx.createDelay(1.0); delay.delayTime.value = 0.34;
+      fb = ctx.createGain(); fb.gain.value = 0.38;
+      delay.connect(fb).connect(delay);
+      calmBus = ctx.createGain(); calmBus.gain.value = 0.14;
+      calmBus.connect(master); calmBus.connect(delay); delay.connect(master);
+      sirenBus = ctx.createGain(); sirenBus.gain.value = 0; sirenBus.connect(master);
+      // the squeal, always running, silent until annoy rises
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 6000;
+      const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 3;
+      const lfoG = ctx.createGain(); lfoG.gain.value = 2200; lfo.connect(lfoG).connect(o.frequency);
+      const trem = ctx.createOscillator(); trem.type = 'square'; trem.frequency.value = 12;
+      const tremG = ctx.createGain(); tremG.gain.value = 0.5; trem.connect(tremG);
+      const vca = ctx.createGain(); vca.gain.value = 0.5; tremG.connect(vca.gain);
+      o.connect(vca).connect(sirenBus);
+      o.start(); lfo.start(); trem.start();
+      siren = { lfo, trem };
+      nextNote = ctx.currentTime + 0.2; nextBeep = ctx.currentTime;
+      setInterval(schedule, 50);
+    }
+    function note(bus, t, freq, type, dur, gain, detune) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.value = freq; o.detune.value = detune || 0;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(bus);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+    function schedule() {
+      const now = ctx.currentTime;
+      // calm layer level: full at the start of the break, ~15% by the end of the hands-off count
+      const away = Math.min(1, state.remaining <= 0 ? 1 : 1 - state.remaining / cfg.breakSec);
+      calmBus.gain.setTargetAtTime(0.14 * (1 - 0.85 * away) * (1 - annoy), now, 0.3);
+      while (nextNote < now + 0.15) {
+        const f = scale[Math.floor(Math.random() * scale.length)];
+        note(calmBus, nextNote, f, 'sine', 1.6, 1.0); note(calmBus, nextNote, f * 2, 'triangle', 1.0, 0.25);
+        nextNote += 0.9 + Math.random() * 0.4;
+      }
+      // siren layer: silent below annoy 0.1, harsh at 1
+      const a = Math.max(0, annoy - 0.1) / 0.9;
+      sirenBus.gain.setTargetAtTime(0.42 * a * a, now, 0.06);
+      siren.lfo.frequency.value = 3 + 5 * a; siren.trem.frequency.value = 10 + 12 * a;
+      if (a > 0.3) {
+        while (nextBeep < now + 0.15) {
+          note(master, nextBeep, Math.floor(nextBeep * 8) % 2 ? 2200 : 3000, 'square', 0.1, 0.22 * a);
+          nextBeep += 0.12;
+        }
+      } else nextBeep = now;
+    }
+    return { init };
+  })();
+
+  // ---------- frame ----------
+  function frame() {
+    const now = elapsed();
+    const dt = Math.min(0.1, (performance.now() - lastFrame) / 1000); lastFrame = performance.now();
+    // Input seen by this window reacts instantly; the system idle timer (state.touching) lags by up to a second.
+    const touching = !escHeld && (now - lastInput < 0.3);
+    annoy = Math.max(0, Math.min(1, annoy + (touching ? dt / 7 : -dt / 1.2)));  // 7 s to unbearable, ~1 s back to calm
+    const cx = (mouse ? mouse.x : window.innerWidth / 2) * dpr;
+    const cy = H - (mouse ? mouse.y : window.innerHeight / 2) * dpr;
+    gl.uniform1i(U.t, 0); gl.uniform1i(U.hasTex, hasTex);
+    gl.uniform2f(U.res, W, H); gl.uniform2f(U.c, cx, cy);
+    gl.uniform1f(U.R, radius()); gl.uniform1f(U.time, now); gl.uniform1f(U.dim, Math.min(1, now / 60));
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    hud();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- wiring ----------
+  window.stan.onInit((d) => {
+    cfg = d.cfg || cfg;
+    if (d.cursor) mouse = { x: d.cursor.x, y: d.cursor.y };
+    if (d.image) loadImage(d.image);
+    SND.init();
+    requestAnimationFrame(frame);
+    window.stan.ready();
+  });
+  window.stan.onState((s) => { state = s; });
+  const sawInput = () => { lastInput = elapsed(); };
+  window.addEventListener('mousemove', (e) => { mouse = { x: e.clientX, y: e.clientY }; sawInput(); });
+  for (const ev of ['mousedown', 'wheel', 'touchstart']) window.addEventListener(ev, sawInput, { passive: true });
+  function setEsc(held) {
+    if (held === escHeld) return;
+    escHeld = held; escStart = held ? performance.now() : null;
+    window.stan.escHold(held);
+  }
+  window.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    if (e.key === 'Escape') setEsc(true);
+    else if (e.key !== 'Alt') sawInput();           // Alt is tapped by the app itself to grab focus
+  });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Escape') setEsc(false); });
+  window.addEventListener('blur', () => setEsc(false));
+})();
+</script>
+</body>
+</html>

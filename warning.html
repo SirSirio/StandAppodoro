@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stretch soon</title>
+<style>
+  @font-face { font-family: 'Outfit'; src: url('assets/fonts/Outfit.woff2') format('woff2'); font-weight: 200 700; font-display: block; }
+  :root {
+    --bg: #171a21; --line: rgba(255,255,255,0.07); --text: #eceef2; --muted: #a4aab5; --accent: #f0b58f;
+  }
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  body { font-family: 'Outfit', system-ui, sans-serif; color: var(--text); -webkit-user-select: none; user-select: none; }
+  .tile {
+    width: 340px; height: 360px; box-sizing: border-box; padding: 26px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    opacity: 0; transform: translateY(-8px) scale(0.98);
+    animation: in 420ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes in { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .tile { animation: none; opacity: 1; transform: none; } }
+  .title { align-self: flex-start; font-size: 17px; font-weight: 500; }
+  .ring { position: relative; width: 128px; height: 128px; }
+  .ring svg { display: block; }
+  .ring .num { position: absolute; inset: 0; display: flex; align-items: baseline; justify-content: center; gap: 4px; padding-top: 40px; box-sizing: border-box; }
+  .num b { font-size: 48px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .num span { font-size: 16px; color: var(--muted); }
+  p { margin: 0; font-size: 15px; line-height: 1.45; text-align: center; color: var(--muted); }
+  .row { display: flex; gap: 8px; margin-top: auto; }
+  button {
+    height: 40px; padding: 0 18px; background: rgba(255,255,255,0.06); border: 0; border-radius: 999px;
+    color: var(--text); font-family: inherit; font-size: 15px; font-weight: 500; cursor: pointer;
+    transition: background 180ms ease, transform 120ms ease;
+  }
+  button:hover { background: rgba(255,255,255,0.11); }
+  button:active { transform: scale(0.97); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .foot { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="tile">
+  <span class="title">Stretch soon</span>
+  <div class="ring">
+    <svg width="128" height="128" viewBox="0 0 128 128" aria-hidden="true">
+      <circle cx="64" cy="64" r="58" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6"/>
+      <circle id="arc" cx="64" cy="64" r="58" fill="none" stroke="#f0b58f" stroke-width="6" stroke-linecap="round" transform="rotate(-90 64 64)"/>
+    </svg>
+    <div class="num"><b id="n">60</b><span>s</span></div>
+  </div>
+  <p>Save what you are doing.<br>The screen rests when this ends.</p>
+  <div class="row" id="row"></div>
+  <span class="foot" id="foot"></span>
+</div>
+<script>
+  const C = 2 * Math.PI * 58;
+  const arc = document.getElementById('arc');
+  const n = document.getElementById('n');
+  const row = document.getElementById('row');
+  const foot = document.getElementById('foot');
+  arc.setAttribute('stroke-dasharray', C);
+  let built = false, chimed10 = false;
+
+  // soft two-note chime
+  let ctx = null;
+  function chime(freqs, gain) {
+    try {
+      ctx = ctx || new AudioContext();
+      const t0 = ctx.currentTime;
+      freqs.forEach((f, i) => {
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0, t0 + i * 0.22);
+        g.gain.linearRampToValueAtTime(gain, t0 + i * 0.22 + 0.04);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.22 + 1.4);
+        o.connect(g).connect(ctx.destination);
+        o.start(t0 + i * 0.22); o.stop(t0 + i * 0.22 + 1.5);
+      });
+    } catch (e) {}
+  }
+  chime([659.25, 880], 0.12);
+
+  window.stan.onState((s) => {
+    n.textContent = Math.ceil(s.remaining);
+    arc.setAttribute('stroke-dashoffset', C * (1 - s.remaining / s.total));
+    if (!built) {
+      built = true;
+      const opts = s.options.filter((m) => m <= s.budget);
+      if (opts.length) {
+        for (const m of opts) {
+          const b = document.createElement('button');
+          b.textContent = `+${m}`;
+          b.setAttribute('aria-label', `Postpone ${m} minutes`);
+          b.addEventListener('click', () => window.stan.postpone(m));
+          row.appendChild(b);
+        }
+        foot.textContent = `${s.budget} min of postponing left`;
+      } else {
+        foot.textContent = 'No postponing left this round';
+      }
+    }
+    if (s.remaining <= 10 && !chimed10) { chimed10 = true; chime([880, 659.25], 0.1); }
+  });
+</script>
+</body>
+</html>

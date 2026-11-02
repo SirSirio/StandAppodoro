@@ -1,0 +1,59 @@
+{
+  "name": "stand-up",
+  "productName": "Stand Up",
+  "version": "1.0.0",
+  "description": "Every 30 minutes, the laptop becomes unusable until you stand up.",
+  "main": "main.js",
+  "author": "Sirio",
+  "license": "MIT",
+  "repository": "github:SirSirio/stand-up",
+  "scripts": {
+    "start": "electron .",
+    "fast": "electron . --fast",
+    "break": "electron . --break-now",
+    "icons": "node tools/gen-icon.js 32 assets/icon.png && node tools/gen-icon.js 256 build/icon.png",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "dev.sirio.standup",
+    "productName": "Stand Up",
+    "files": [
+      "main.js",
+      "preload.js",
+      "overlay.html",
+      "warning.html",
+      "tray.html",
+      "assets/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "publish": {
+      "provider": "github"
+    }
+  }
+}
