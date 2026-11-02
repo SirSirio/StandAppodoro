@@ -31,7 +31,7 @@ Pushing a tag like `v1.0.1` makes GitHub Actions build the installer and attach 
 2. **Warning tile** (top right) counts down 60 seconds. Postpone with +5, +10, +15. Budget: 15 minutes per cycle.
 3. **Break**: the screen is captured and warped into a black hole that follows the cursor and grows to full size in about 6 seconds.
    The ring empties as you stay away. The count only advances while nothing is touched, and restarts on any input.
-   Calm music fades out the longer you stay away. Touching the mouse or keyboard ramps a siren in within about 7 seconds.
+   A calm melody plays for the first 5 seconds, then fades to silence. Touching the mouse or keyboard ramps a siren in within about 7 seconds.
 4. **Escape**: hold Esc for 10 seconds. The next break then comes after 15 minutes instead of 30.
 
 ## Testing
