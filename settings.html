@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StandAppodoro settings</title>
+<style>
+  @font-face { font-family: 'Outfit'; src: url('assets/fonts/Outfit.woff2') format('woff2'); font-weight: 200 700; font-display: block; }
+  :root { --bg: #171a21; --line: rgba(255,255,255,0.08); --field: rgba(255,255,255,0.05); --text: #eceef2; --muted: #a4aab5; --accent: #f0b58f; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  body { font-family: 'Outfit', system-ui, sans-serif; color: var(--text); font-size: 16px; -webkit-user-select: none; user-select: none; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 6px 26px; -webkit-app-region: drag; }
+  h1 { margin: 0; font-size: 20px; font-weight: 500; }
+  .x { -webkit-app-region: no-drag; width: 34px; height: 34px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 20px; cursor: pointer; }
+  .x:hover { background: var(--field); color: var(--text); }
+  main { padding: 6px 26px 0; display: flex; flex-direction: column; gap: 18px; flex: 1; }
+  .f { display: flex; flex-direction: column; gap: 6px; }
+  label { font-size: 16px; font-weight: 500; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  input { width: 96px; height: 42px; box-sizing: border-box; padding: 0 14px; background: var(--field); border: 1px solid var(--line); border-radius: 12px; color: var(--text); font-family: inherit; font-size: 18px; font-variant-numeric: tabular-nums; outline: none; }
+  input:focus { border-color: var(--accent); }
+  .unit { color: var(--muted); font-size: 15px; }
+  .help { font-size: 14px; color: var(--muted); line-height: 1.4; }
+  footer { display: flex; align-items: center; gap: 12px; padding: 18px 26px 24px; }
+  .save { height: 44px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--accent); color: #1c1510; font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 120ms ease; }
+  .save:active { transform: scale(0.97); }
+  .save:focus-visible, .x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { font-size: 14px; color: var(--muted); }
+  .err { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Settings</h1>
+  <button class="x" id="close" aria-label="Close">&times;</button>
+</header>
+<main>
+  <div class="f">
+    <label for="workMin">Work for</label>
+    <div class="row"><input id="workMin" type="number" min="1" max="240" step="1"><span class="unit">minutes</span></div>
+    <span class="help">Changing this restarts the current work timer.</span>
+  </div>
+  <div class="f">
+    <label for="breakSec">Hands off for</label>
+    <div class="row"><input id="breakSec" type="number" min="5" max="600" step="5"><span class="unit">seconds</span></div>
+    <span class="help">The break ends once nothing has been touched for this long.</span>
+  </div>
+  <div class="f">
+    <label for="warnSec">Warning before the break</label>
+    <div class="row"><input id="warnSec" type="number" min="10" max="300" step="5"><span class="unit">seconds</span></div>
+  </div>
+  <div class="f">
+    <label for="postponeMaxMin">Postpone budget per cycle</label>
+    <div class="row"><input id="postponeMaxMin" type="number" min="0" max="120" step="5"><span class="unit">minutes</span></div>
+    <span class="help">Set 0 to remove the postpone buttons.</span>
+  </div>
+</main>
+<footer>
+  <button class="save" id="save">Save</button>
+  <span class="status" id="status"></span>
+</footer>
+<script>
+  const ids = ['workMin', 'breakSec', 'warnSec', 'postponeMaxMin'];
+  const status = document.getElementById('status');
+  window.stan.getSettings().then((s) => { for (const k of ids) document.getElementById(k).value = s[k]; });
+  document.getElementById('close').addEventListener('click', () => window.stan.closeSettings());
+  document.getElementById('save').addEventListener('click', async () => {
+    const out = {};
+    for (const k of ids) {
+      const el = document.getElementById(k), v = Number(el.value);
+      if (!Number.isFinite(v) || v < Number(el.min) || v > Number(el.max)) {
+        status.textContent = `${el.labels[0].textContent}: use ${el.min} to ${el.max}.`; status.className = 'status err'; el.focus(); return;
+      }
+      out[k] = Math.round(v);
+    }
+    await window.stan.saveSettings(out);
+    status.textContent = 'Saved.'; status.className = 'status';
+    setTimeout(() => window.stan.closeSettings(), 500);
+  });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.stan.closeSettings(); if (e.key === 'Enter') document.getElementById('save').click(); });
+</script>
+</body>
+</html>

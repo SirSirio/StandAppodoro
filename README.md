@@ -11,7 +11,9 @@ It installs per user (no admin needed) and starts right away. Enable "Start with
 
 The app lives in the tray: a peach ring that empties as the 30 minutes run out, with the minutes left in the middle.
 Windows hides new tray icons behind the `^` chevron. Drag the ring onto the taskbar, or turn it on under
-Settings > Personalization > Taskbar > Other system tray icons. Right-click it for Break now, Pause, Start with Windows, Quit.
+Settings > Personalization > Taskbar > Other system tray icons. Right-click it for Break now, Pause, Start with Windows, Settings, Quit.
+
+Settings: how long you work, how long you must stay hands-off, the warning length, and the postpone budget.
 
 ## Run from source
 

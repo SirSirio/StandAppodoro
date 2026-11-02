@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('stan', {
   escape: () => ipcRenderer.send('escape'),
   escHold: (held) => ipcRenderer.send('esc-hold', !!held),
   ready: () => ipcRenderer.send('ready'),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveSettings: (s) => ipcRenderer.invoke('settings:save', s),
+  closeSettings: () => ipcRenderer.send('settings:close'),
 });

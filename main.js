@@ -1,20 +1,47 @@
 // StandAppodoro: every 30 minutes the laptop becomes unusable until you have been hands-off for 30 seconds.
 const { app, BrowserWindow, Tray, Menu, screen, ipcMain, powerMonitor, desktopCapturer, nativeImage, Notification } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { execFile } = require('child_process');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const FAST = process.argv.includes('--fast'); // dev mode: a "minute" is one second
 const BREAK_NOW = process.argv.includes('--break-now'); // dev mode: start a break 3 s after launch
+const OPEN_SETTINGS = process.argv.includes('--settings'); // dev mode: open the settings window at launch
 const MIN = FAST ? 1 : 60;
+
+// User settings (tray > Settings), stored in settings.json under userData.
+const DEFAULTS = { workMin: 30, breakSec: 30, warnSec: 60, postponeMaxMin: 15 };
+const LIMITS = { workMin: [1, 240], breakSec: [5, 600], warnSec: [10, 300], postponeMaxMin: [0, 120] };
+let settings = { ...DEFAULTS };
+const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
+function loadSettings() {
+  try { Object.assign(settings, sanitize(JSON.parse(fs.readFileSync(settingsPath(), 'utf8')))); } catch (e) { /* first run */ }
+  applySettings();
+}
+function sanitize(obj) {
+  const out = {};
+  for (const k of Object.keys(DEFAULTS)) {
+    const v = Math.round(Number(obj && obj[k]));
+    if (Number.isFinite(v)) out[k] = Math.min(LIMITS[k][1], Math.max(LIMITS[k][0], v));
+  }
+  return out;
+}
+function applySettings() {
+  CFG.workSec = settings.workMin * MIN;
+  CFG.warnSec = FAST ? Math.min(12, settings.warnSec) : settings.warnSec;
+  CFG.breakSec = settings.breakSec;
+  CFG.postponeMaxMin = settings.postponeMaxMin;
+}
+
 const CFG = {
-  workSec: 30 * MIN,          // work interval
-  warnSec: FAST ? 12 : 60,    // warning before the break
-  breakSec: 30,               // hands-off seconds required to end the break
+  workSec: 30 * MIN,          // work interval (from settings)
+  warnSec: 60,                // warning before the break (from settings)
+  breakSec: 30,               // hands-off seconds required to end the break (from settings)
   growSec: 6,                 // vortex reaches full size after this many seconds
   escHoldSec: 10,             // hold Esc this long to escape a break
-  postponeMaxMin: 15,         // total postpone budget per cycle
+  postponeMaxMin: 15,         // total postpone budget per cycle (from settings)
   postponeOptions: [5, 10, 15],
   escapeGraceMin: 15,         // next break comes this soon after an escape
   idleResetSec: FAST ? 3600 : 5 * 60, // being away this long counts as a break (disabled in --fast)
@@ -36,6 +63,7 @@ let tray = null;
 let trayWin = null;         // hidden offscreen page that paints the tray icon
 let lastIcon = '';
 let warnWin = null;
+let settingsWin = null;
 let overlays = [];
 let cursorWin = null;
 let lastTrayText = '';
@@ -52,6 +80,21 @@ function forceForeground(win) {
   const ps = `Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, UIntPtr e);'; ` +
     `[W.U]::keybd_event(0x12,0,0,[UIntPtr]::Zero); [W.U]::keybd_event(0x12,0,2,[UIntPtr]::Zero); [W.U]::SetForegroundWindow([IntPtr]${hwnd}) | Out-Null`;
   execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps], { windowsHide: true }, (err) => { if (err) console.error('forceForeground failed', err.message); });
+}
+
+// ---------- settings window ----------
+
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 400, height: 620, frame: false, resizable: false, show: false, skipTaskbar: false,
+    backgroundColor: '#171a21', title: 'StandAppodoro settings',
+    webPreferences: { preload: PRELOAD, contextIsolation: true },
+  });
+  settingsWin.setMenuBarVisibility(false);
+  settingsWin.loadFile('settings.html');
+  settingsWin.once('ready-to-show', () => { settingsWin.show(); forceForeground(settingsWin); });
+  settingsWin.on('closed', () => { settingsWin = null; });
 }
 
 // ---------- phases ----------
@@ -282,6 +325,8 @@ function rebuildMenu(text) {
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
     },
     { type: 'separator' },
+    { label: 'Settings...', click: () => openSettings() },
+    { type: 'separator' },
     { label: 'Quit', click: () => { S.phase = 'quit'; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
@@ -302,6 +347,17 @@ app.whenReady().then(() => {
   }
 
   ipcMain.on('postpone', (_e, minutes) => postpone(Number(minutes)));
+  ipcMain.handle('settings:get', () => ({ ...settings }));
+  ipcMain.handle('settings:save', (_e, obj) => {
+    const prevWork = settings.workMin;
+    Object.assign(settings, sanitize(obj));
+    applySettings();
+    try { fs.mkdirSync(app.getPath('userData'), { recursive: true }); fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2)); } catch (e) { console.error('settings save failed', e); }
+    if (S.phase === 'work' && settings.workMin !== prevWork) { S.paused = false; startWork(CFG.workSec); }
+    lastTrayText = ''; lastIcon = '';
+    return { ...settings };
+  });
+  ipcMain.on('settings:close', () => { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close(); });
   ipcMain.on('escape', () => { if (S.phase === 'break') endBreak('escaped'); });
   ipcMain.on('esc-hold', (_e, held) => { S.escHeld = !!held; });
 
@@ -311,8 +367,10 @@ app.whenReady().then(() => {
     startWork(CFG.workSec);
   });
 
+  loadSettings();
   startWork(CFG.workSec);
   setInterval(tick, 200);
+  if (OPEN_SETTINGS) openSettings();
   if (FAST) console.log('StandAppodoro running in --fast mode: 1 "minute" = 1 second');
   if (BREAK_NOW) setTimeout(startBreak, 3000);
 });
