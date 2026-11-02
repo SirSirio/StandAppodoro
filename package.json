@@ -1,12 +1,12 @@
 {
-  "name": "stand-up",
-  "productName": "Stand Up",
+  "name": "standappodoro",
+  "productName": "StandAppodoro",
   "version": "1.0.0",
-  "description": "Every 30 minutes, the laptop becomes unusable until you stand up.",
+  "description": "Every 30 minutes the laptop becomes unusable until you stand app.",
   "main": "main.js",
   "author": "Sirio",
   "license": "MIT",
-  "repository": "github:SirSirio/stand-up",
+  "repository": "github:SirSirio/StandAppodoro",
   "scripts": {
     "start": "electron .",
     "fast": "electron . --fast",
@@ -19,8 +19,8 @@
     "electron-builder": "^26.0.0"
   },
   "build": {
-    "appId": "dev.sirio.standup",
-    "productName": "Stand Up",
+    "appId": "dev.sirio.standappodoro",
+    "productName": "StandAppodoro",
     "files": [
       "main.js",
       "preload.js",
@@ -50,7 +50,7 @@
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "StandAppodoro-Setup-${version}.${ext}"
     },
     "publish": {
       "provider": "github"

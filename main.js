@@ -1,4 +1,4 @@
-// Stand Up: every 30 minutes the laptop becomes unusable until you have been hands-off for 30 seconds.
+// StandAppodoro: every 30 minutes the laptop becomes unusable until you have been hands-off for 30 seconds.
 const { app, BrowserWindow, Tray, Menu, screen, ipcMain, powerMonitor, desktopCapturer, nativeImage, Notification } = require('electron');
 const path = require('path');
 const { execFile } = require('child_process');
@@ -230,7 +230,7 @@ function updateTray(now) {
   const text = statusText(now);
   if (text !== lastTrayText) {
     lastTrayText = text;
-    tray.setToolTip(`Stand Up: ${text}`);
+    tray.setToolTip(`StandAppodoro: ${text}`);
     rebuildMenu(text);
   }
   // icon: ring = share of the work interval left, number = minutes left (seconds during the warning)
@@ -292,13 +292,13 @@ function rebuildMenu(text) {
 if (!app.requestSingleInstanceLock()) app.quit();
 
 app.whenReady().then(() => {
-  app.setAppUserModelId('standup.break');
+  app.setAppUserModelId('dev.sirio.standappodoro');
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')));
   tray.on('click', () => tray.popUpContextMenu());
   createTrayPainter();
   ipcMain.on('ready', (e) => { if (trayWin && e.sender === trayWin.webContents) { lastIcon = ''; updateTray(Date.now()); } });
   if (Notification.isSupported()) {
-    new Notification({ title: 'Stand Up is running', body: `Next break in ${CFG.workSec / MIN} minutes. The ring in the tray counts down.`, silent: true }).show();
+    new Notification({ title: 'StandAppodoro is running', body: `Next break in ${CFG.workSec / MIN} minutes. The ring in the tray counts down.`, silent: true }).show();
   }
 
   ipcMain.on('postpone', (_e, minutes) => postpone(Number(minutes)));
@@ -313,7 +313,7 @@ app.whenReady().then(() => {
 
   startWork(CFG.workSec);
   setInterval(tick, 200);
-  if (FAST) console.log('Stand Up running in --fast mode: 1 "minute" = 1 second');
+  if (FAST) console.log('StandAppodoro running in --fast mode: 1 "minute" = 1 second');
   if (BREAK_NOW) setTimeout(startBreak, 3000);
 });
 

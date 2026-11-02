@@ -1,4 +1,4 @@
-# Stand Up
+# 30 Min Stand App
 
 Every 30 minutes the laptop becomes unusable until you have been hands-off for 30 seconds.
 
@@ -6,7 +6,7 @@ Windows only for now.
 
 ## Install
 
-Download `Stand Up-Setup-<version>.exe` from the latest [release](../../releases/latest) and run it.
+Download `30-Min-Stand-App-Setup-<version>.exe` from the latest [release](../../releases/latest) and run it.
 It installs per user (no admin needed) and starts right away. Enable "Start with Windows" from the tray menu.
 
 The app lives in the tray: a peach ring that empties as the 30 minutes run out, with the minutes left in the middle.
@@ -20,7 +20,7 @@ npm install
 npm start
 ```
 
-Or double-click `Start Stand Up.cmd`. `npm run dist` builds the installer into `dist/`.
+Or double-click `Start Stand App.cmd`. `npm run dist` builds the installer into `dist/`.
 Pushing a tag like `v1.0.1` makes GitHub Actions build the installer and attach it to a release.
 
 ## How a cycle goes
